@@ -14,6 +14,11 @@ HOME = os.getenv("HOME")
 rayleigh_dir = os.path.join(HOME, "Programs", "Rayleigh-Fork")
 
 #-------
+# include support for LaTeX
+#-------
+use_tex = True
+
+#-------
 # set default application size
 #     if screen size is xs wide and ys tall,
 #     then the application will be

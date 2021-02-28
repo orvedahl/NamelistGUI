@@ -110,7 +110,7 @@ class InputGUI(wx.Frame):
         """set the status bar"""
         self.statusbar = self.CreateStatusBar()
         self.statusbar.SetFieldsCount(3) # make 3 of them
-        self.statusbar.SetStatusWidths([-1,-2,-3]) # last one is 2x size of 1st and 2nd, all stretch as needed
+        self.statusbar.SetStatusWidths([-1,-2,-2]) # last one is 2x size of 1st and 2nd, all stretch as needed
         self.statusbar.SetStatusText("", 0)
         self.statusbar.SetStatusText("Namelist:", 1)
         self.statusbar.SetStatusText("File:", 2)
@@ -152,9 +152,11 @@ class InputGUI(wx.Frame):
         toolbar = self.CreateToolBar() # build a toolbar
 
         # build tools
-        ntool = toolbar.AddTool(wx.ID_ANY, 'New', wx.Bitmap('./images/new_file.png'))
-        otool = toolbar.AddTool(wx.ID_ANY, 'Open', wx.Bitmap('./images/open_folder.png'))
-        stool = toolbar.AddTool(wx.ID_ANY, 'Save', wx.Bitmap('./images/filesave.png'))
+        file_dir = os.path.dirname(os.path.abspath(__file__)) # directory of current file
+        image_dir = os.path.join(file_dir, 'images')
+        ntool = toolbar.AddTool(wx.ID_ANY, 'New', wx.Bitmap(os.path.join(image_dir, 'new_file.png')))
+        otool = toolbar.AddTool(wx.ID_ANY, 'Open', wx.Bitmap(os.path.join(image_dir, 'open_folder.png')))
+        stool = toolbar.AddTool(wx.ID_ANY, 'Save', wx.Bitmap(os.path.join(image_dir, 'filesave.png')))
 
         # direct GUI what to do when something is selected
         self.Bind(wx.EVT_TOOL, self.buttons.OnNew,  ntool)
@@ -189,7 +191,8 @@ class InputGUI(wx.Frame):
         # replace old menu in the 1st position with updated one (0-based indexing)
         self.menubar.Replace(1, new_nml, '&Namelists')
 
-        self.nmlpanel.reset() # reset the namelist entries that are displayed
+        # reset the namelist entries that are displayed
+        self.nmlpanel.reset(unset_namelist=True) # ensure no namelist is currently selected
 
         self.statusbar.SetStatusText("Choose a namelist from the menu", 1)
 
@@ -199,7 +202,7 @@ class InputGUI(wx.Frame):
         names = list(self.input_file.namelists.keys()) # all namelist names in the input file
         self.namelist = names[_id]
 
-        self.nmlpanel.update() # display the namelist values
+        self.nmlpanel.update(unset_namelist=False) # display the namelist values
 
         self.reset_statusbar()
         self.statusbar.SetStatusText("Namelist: {}".format(self.namelist), 1)
@@ -266,7 +269,7 @@ class ButtonPanel(wx.Panel):
 
         self.mainparent.statusbar.SetStatusText("Added: {}".format(name), 0)
 
-        self.mainparent.nmlpanel.update(save_namelist=True) # update displayed namelist to include new entry
+        self.mainparent.nmlpanel.update(unset_namelist=False) # update displayed namelist to include new entry
 
     def OnNew(self, e):
         """build an empty namelist"""
@@ -337,15 +340,18 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
         # draw/display the selected namelist
         if (self.mainparent.file_loaded and (self.mainparent.namelist is not None)):
-            self.update()
+            self.update(unset_namelist=False)
 
-    def update(self, save_namelist=False):
+    def update(self, unset_namelist=False):
         """draw the Namelist panel"""
 
-        self.reset(save_namelist=save_namelist) # make sure it is empty, to avoid overlapping text
+        self.reset(unset_namelist=unset_namelist) # make sure it is empty, to avoid overlapping text
 
         entry = "Namelist: {}".format(self.mainparent.namelist)
         title = wx.StaticText(self, -1, entry)
+
+        # this option is only available if LaTeX is supported
+        is_output_namelist = ((self.mainparent.namelist == "output_namelist") and defaults.use_tex)
 
         # buttons
         save = wx.Button(self, -1, 'Save Entries')
@@ -353,27 +359,24 @@ class NamelistPanel(scrolled.ScrolledPanel):
         close = wx.Button(self, -1, 'Close Namelist')
         close.Bind(wx.EVT_BUTTON, self.Remove)
 
+        # only applicable to output namelist
+        if (is_output_namelist):
+            advanced_entry = wx.Button(self, -1, 'Choose \"<output>_values\"')
+            advanced_entry.Bind(wx.EVT_BUTTON, self.OutputEntry)
+
         # size managers
         self.main_sizer = wx.BoxSizer(wx.VERTICAL)
         title_sizer = wx.BoxSizer(wx.HORIZONTAL)
         grid_sizer = wx.GridBagSizer(0,0)
-      #  self.main_sizer = wx.BoxSizer(wx.VERTICAL)
-      #  self.title_s = wx.BoxSizer(wx.HORIZONTAL)  # title sizer
-      #  self.button_s = wx.BoxSizer(wx.HORIZONTAL) # button sizer
-      #  self.var_s = wx.BoxSizer(wx.VERTICAL)      # global name/value sizer, to store all of them
 
         _border = 5
-        #opts = wx.EXPAND|wx.ALL|wx.GROW
         static_opts = wx.ALL|wx.ALIGN_CENTER
         text_opts = wx.EXPAND|wx.ALL
 
-        # add the title row, span=(number of rows, number of columns)
-      #  self.main_sizer.Add(title, pos=(0,0), flag=static_opts, border=_border)
-
-        # add the button row next
-      #  self.main_sizer.Add(close, pos=(2,4), flag=static_opts, border=_border)
-      #  self.main_sizer.Add(save, pos=(2,6), flag=static_opts, border=_border)
+        # add the title & buttons to top row
         title_sizer.Add(title, 1, text_opts|wx.GROW|wx.ALIGN_CENTER, border=_border)
+        if (is_output_namelist):
+            title_sizer.Add(advanced_entry, 0, text_opts|wx.GROW, border=_border)
         title_sizer.Add(close, 0, text_opts|wx.GROW, border=_border)
         title_sizer.Add(save, 0, text_opts|wx.GROW, border=_border)
 
@@ -382,12 +385,11 @@ class NamelistPanel(scrolled.ScrolledPanel):
         self.var_names = [v.name for v in nml.variables]
         self.var_values = [v.value for v in nml.variables]
 
-        # add entries to individual sizers
+        # add entries to individual sizers, span=(number of rows, number of columns)
         self.entries = []
         row = 0
         for i in range(len(self.var_names)):
             variable_name = self.var_names[i]
-      #      name_s = wx.BoxSizer(wx.HORIZONTAL) # sizer specific to this name/value
             name = wx.StaticText(self, -1, variable_name) # build lhs name
             val = ",".join(self.var_values[i])
 
@@ -419,37 +421,17 @@ class NamelistPanel(scrolled.ScrolledPanel):
             if (growable):
                 grid_sizer.AddGrowableRow(row,1)
 
-      #      name_s.Add(name, 0, opts, border=_border) # add name/value to the sizer
-      #      name_s.Add(entry, 1, opts, border=_border)
-
-      #      self.var_s.Add(name_s, 0, opts, border=_border) # add this entry to global variable sizer
             row += row_span # not one, to avoid overlapping entries
 
-        grid_sizer.AddGrowableCol(1,1)
+        grid_sizer.AddGrowableCol(1,1) # make the second column "1" growable, i.e., grows as necessary
 
-        #grid_sizer.Add(wx.StaticText(self, -1, "0"), pos=(row,0), flag=static_opts, border=_border)
-        #grid_sizer.Add(wx.StaticText(self, -1, "1"), pos=(row,1), flag=static_opts, border=_border)
-        #grid_sizer.Add(wx.StaticText(self, -1, "2"), pos=(row,2), flag=static_opts, border=_border)
-        #grid_sizer.Add(wx.StaticText(self, -1, "3"), pos=(row,3), flag=static_opts, border=_border)
-        #grid_sizer.Add(wx.StaticText(self, -1, "4"), pos=(row,4), flag=static_opts, border=_border)
-
-      #  self.title_s.Add(title, 1, opts|wx.ALIGN_CENTER, border=_border)  # add title to title sizer
-      #  self.button_s.Add(close, 1, opts|wx.ALIGN_CENTER, border=_border) # add buttons to button sizer
-      #  self.button_s.Add(save, 1, opts|wx.ALIGN_CENTER, border=_border)
-
-        # add individual sizers main sizer
-      #  self.main_sizer.Add(self.title_s, 0, opts, border=_border)
-      #  self.main_sizer.Add(self.button_s, 0, opts, border=_border)
-      #  self.main_sizer.Add(self.var_s, 0, opts, border=_border)
-
+        # add individual sizers to main sizer
         self.main_sizer.Add(title_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
         self.main_sizer.Add(wx.StaticLine(self), 0, wx.ALL|wx.EXPAND|wx.GROW, border=_border)
         self.main_sizer.Add(grid_sizer, 0, wx.ALL|wx.EXPAND|wx.GROW, border=_border)
 
         self.SetSizer(self.main_sizer) # apply sizing/fit
         self.main_sizer.Fit(self)
-
-        #self.SetSizerAndFit(self.main_sizer)
 
         self.Center()
 
@@ -480,7 +462,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
         self.mainparent.statusbar.SetStatusText("Namelist saved", 0)
 
-    def reset(self, save_namelist=False):
+    def reset(self, unset_namelist=False):
         """reset the Namelist panel"""
         if (self.loaded):
             for child in self.GetChildren(): # loop over all children in the panel
@@ -490,14 +472,175 @@ class NamelistPanel(scrolled.ScrolledPanel):
             except:
                 pass
             self.loaded = False
-            if (not save_namelist):
+            if (unset_namelist):
                 self.mainparent.namelist = None
-            self.mainparent.statusbar.SetStatusText("Namelist closed", 0)
-            self.mainparent.statusbar.SetStatusText("Choose a namelist from the menu", 1)
+                self.mainparent.statusbar.SetStatusText("Namelist closed", 0)
+                self.mainparent.statusbar.SetStatusText("Choose a namelist from the menu", 1)
 
     def Remove(self, e):
-        """reset the Namelist panel using a button"""
-        self.reset()
+        """close the Namelist panel using a button"""
+        self.reset(unset_namelist=True)
+
+    def OutputEntry(self, e):
+        """open up a better way to enter output values"""
+        current_namelist = self.mainparent.namelist
+        input_file = self.mainparent.input_file
+        output_namelist = input_file.namelists[current_namelist]
+
+        self.reset(unset_namelist=False) # clear the panel buttons/widgets, but keep namelist set
+
+        _border = 5
+        static_opts = wx.ALL|wx.ALIGN_CENTER
+        text_opts = wx.EXPAND|wx.ALL
+
+        # output types mapped to namelist appearance
+        output_types = {"Shell Slice":"shellslice",
+                        "Shell Spectra":"shellspectra",
+                        "Point Probes":"point_probe",
+                        "Meridional Slice":"meridional",
+                        "Equatorial Slice":"equatorial",
+                        "Az Average":"azavg",
+                        "Shell Average":"shellavg",
+                        "Global Average":"globalavg",
+                        "SPH Mode":"sph_mode",
+                        "Spherical 3D":"full3d"}
+        self.output_type = None
+
+        #----
+        # parse source tree to get valid quantity codes, latex definitions, and diagnostic types
+        #----
+        diagnostic_types = ["Velocities", "Magnetic Fields"]
+        quantities = [1,2,3,4,5,6]
+        self.diag_type = None
+
+        #----
+        # build contents, will share much of the update() method content, but with important differences
+        #
+        #     output type: <output>    diagnostic type: <diagnostics>
+        #            <close button>    <save/add button>
+        #     ----------------------------------------------------------------------------------
+        #              some kind of title/header page
+        #     ----------------------------------------------------------------------------------
+        #     <row 1: a check box> <row 2: quantity code> <row 3: Name> <row 4: LaTeX rendering>
+        #     ...
+        #     ... entries change based on <diagnostic type>
+        #     ...
+        #----
+        self.main_sizer.Add(wx.StaticLine(self), 0, wx.ALL|wx.EXPAND|wx.GROW, border=_border)
+
+        # size managers
+        self.main_sizer = wx.BoxSizer(wx.VERTICAL)
+        title_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        combo_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        grid_sizer = wx.GridBagSizer(0,0)
+
+        # setup the title
+        self.num_values = 0
+        self.output = wx.StaticText(self, -1, "Output Type: <select one>")
+        self.diagnostic_type = wx.StaticText(self, -1, "Diagnostic Type: <select one>")
+
+        # combo boxes and bind them
+        self.output_combo = wx.ComboBox(self, choices=list(output_types.keys()), style=wx.CB_DROPDOWN)
+        self.output_combo.Bind(wx.EVT_COMBOBOX, self.SelectOutput)
+        self.diag_type_combo = wx.ComboBox(self, choices=diagnostic_types, style=wx.CB_DROPDOWN)
+        self.diag_type_combo.Bind(wx.EVT_COMBOBOX, self.SelectDiagType)
+
+        # buttons
+        save = wx.Button(self, -1, 'Update/Save Selected Entries')
+        save.Bind(wx.EVT_BUTTON, self.SaveValues)
+        close = wx.Button(self, -1, 'Close Namelist')
+        close.Bind(wx.EVT_BUTTON, self.Remove)
+
+        # add title/combo/buttons to sizers
+        title_sizer.Add(self.output, 1, text_opts|wx.GROW, border=_border)
+        title_sizer.Add(self.diagnostic_type, 1, text_opts|wx.GROW, border=_border)
+        combo_sizer.Add(self.output_combo, 1, text_opts|wx.GROW, border=_border)
+        combo_sizer.Add(self.diag_type_combo, 1, text_opts|wx.GROW, border=_border)
+        button_sizer.Add(close, 0, text_opts|wx.GROW, border=_border)
+        button_sizer.Add(save, 0, text_opts|wx.GROW, border=_border)
+
+        # setup the grid of possible values
+        header0 = wx.StaticText(self, -1, "Add/Remove")
+        header1 = wx.StaticText(self, -1, "Quantity Code")
+        header2 = wx.StaticText(self, -1, "Name")
+        header3 = wx.StaticText(self, -1, "LaTeX Formula")
+        grid_sizer.Add(header0, pos=(0,0), flag=static_opts, border=_border)
+        grid_sizer.Add(header1, pos=(0,1), flag=static_opts, border=_border)
+        grid_sizer.Add(header2, pos=(0,2), flag=static_opts, border=_border)
+        grid_sizer.Add(header3, pos=(0,3), flag=static_opts, border=_border)
+
+        self.selected_values = [] # keep track of selected quantities
+
+        if (self.diag_type is None):
+            row = 1
+            for qcode in quantities:
+                but = wx.ToggleButton(self, qcode, "Add") # build button and place it in second column
+                but.Bind(wx.EVT_TOGGLEBUTTON, self.OnToggle)
+                grid_sizer.Add(but, pos=(row,0), flag=static_opts, border=_border)
+
+                q_code = wx.StaticText(self, -1, str(qcode)) # build other column entries
+                q_name = wx.StaticText(self, -1, str(10*qcode)) # name
+                formula= wx.StaticText(self, -1, "Formula")
+
+                # place column entries
+                grid_sizer.Add(q_code, pos=(row,1), flag=static_opts, border=_border)
+                grid_sizer.Add(q_name, pos=(row,2), flag=static_opts, border=_border)
+                grid_sizer.Add(formula, pos=(row,3), flag=static_opts, border=_border)
+
+                row += 1
+            grid_sizer.AddGrowableCol(2,1) # make the name/formula columns "1" growable, i.e., grows as necessary
+            grid_sizer.AddGrowableCol(3,1)
+
+        # add stuff to sizers
+        self.main_sizer.Add(title_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
+        self.main_sizer.Add(combo_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
+        self.main_sizer.Add(button_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
+        self.main_sizer.Add(wx.StaticLine(self), 0, wx.ALL|wx.EXPAND|wx.GROW, border=_border)
+        self.main_sizer.Add(grid_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
+
+        self.SetSizer(self.main_sizer) # apply sizing/fit
+        self.main_sizer.Fit(self)
+
+        self.Center()
+
+        self.parent.Layout()
+        self.SetAutoLayout(1) # setup scrolling, if it is needed
+        self.SetupScrolling()
+
+    def OnToggle(self, e):
+        """what to do when quantity code button is selected"""
+        state = e.GetEventObject().GetValue() # state of button = True/False
+        _id = e.GetId() # ID is the quantity code
+
+        if (state):
+            e.GetEventObject().SetLabel("Remove") # change button text
+
+            if (_id not in self.selected_values): # add quantity
+                self.selected_values.append(_id)
+
+        else:
+            e.GetEventObject().SetLabel("Add") # change button text
+
+            if (_id in self.selected_values): # remove quantity
+                self.selected_values.remove(_id)
+
+    def SelectDiagType(self, e):
+        """what to do when a diagnostic type was selected"""
+        self.diag_type = str(self.diag_type_combo.GetValue())
+        self.diagnostic_type.SetLabel("Diagnostic Type: {}".format(self.diag_type))
+
+    def SelectOutput(self, e):
+        """what to do when an output type was selected"""
+        self.output_type = str(self.output_combo.GetValue())
+        self.output.SetLabel("Output Type: {}".format(self.output_type))
+
+    def SaveValues(self, e):
+        """save value entries from Namelist"""
+        self.num_values = len(self.selected_values)
+        print(self.selected_values)
+
+        self.mainparent.statusbar.SetStatusText("Added {} {} quantities".format(self.num_values, self.output_type), 0)
 
 class NewVariableDialog(wx.Dialog):
     """
@@ -557,6 +700,25 @@ class NewVariableDialog(wx.Dialog):
         value = str(self.value_entry.GetValue())
         return name, value
 
+class OutputEntryDisplay(scrolled.ScrolledPanel):
+    """
+    More user-friendly way to enter output values
+    """
+    def __init__(self, parent):
+
+        self.parent = parent # this should point to the NamelistPanel
+        scrolled.ScrolledPanel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
+
+class OutputEntryPanel(scrolled.ScrolledPanel):
+    """
+    The namelist panel that will appear on the left side
+    """
+    def __init__(self, parent):
+
+        self.parent = parent
+        scrolled.ScrolledPanel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
+
+        self.mainparent = self.GetParent().GetParent() # very clunky(?), but works
 def main():
     """
     Run the application
