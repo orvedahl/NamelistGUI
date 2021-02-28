@@ -6,6 +6,7 @@ import os
 import wx
 import wx.lib.scrolledpanel as scrolled
 from namelists import InputFile, Variable
+from diagnostic_outputs import OutputQuantities
 import defaults
 
 def AskYesNo(question, title=''):
@@ -27,7 +28,7 @@ def AskText(question, default='', title=''):
     """ask user to enter a text value"""
 
     # build the dialog
-    dlg = wx.TextEntryDialog(self.parent, str(question), title, value=default)
+    dlg = wx.TextEntryDialog(None, str(question), title, value=default)
 
     if (dlg.ShowModal() != wx.ID_OK): # run it and capture answer
         dlg.Destroy()
@@ -231,8 +232,10 @@ class ButtonPanel(wx.Panel):
         button_opts = wx.EXPAND|wx.ALL|wx.GROW
 
         # build some buttons, bind them to an event handler, and add them to spacer
-        names = ["New Project", "Open", "Write to File", "Add New Variable"]
-        handles = [self.OnNew, self.OnOpen, self.OnSave, self.AddVariable]
+        names = ["Open", "Write to File", "Add New Variable",
+                 "Remove Variable", "Add New Namelist", "Remove Namelist"]
+        handles = [self.OnOpen, self.OnSave, self.AddVariable,
+                   self.RemoveVariable, self.AddNamelist, self.RemoveNamelist]
 
         for name, handle in zip(names, handles):
             some_button = wx.Button(self, -1, name)
@@ -271,9 +274,76 @@ class ButtonPanel(wx.Panel):
 
         self.mainparent.nmlpanel.update(unset_namelist=False) # update displayed namelist to include new entry
 
+    def RemoveVariable(self, e):
+        """remove a variable from current namelist"""
+        if (not self.mainparent.file_loaded):
+            msg = "An input file must be loaded before a variable can be removed"
+            ShowMessage(msg, kind='warn')
+            return
+        if (self.mainparent.namelist is None):
+            msg = "Use the menu to select a namelist, first"
+            ShowMessage(msg, kind='info')
+            return
+        self.mainparent.statusbar.SetStatusText("Removing a variable", 0)
+
+        remove_name = AskText("Enter variable name to remove", title="Remove Variable")
+
+        if (remove_name is not None):
+            self.mainparent.input_file.namelists[self.mainparent.namelist].remove_variable(remove_name)
+
+            # redraw stuff
+            self.mainparent.statusbar.SetStatusText("Removed: {}".format(remove_name), 0)
+            self.mainparent.nmlpanel.update(unset_namelist=False) # update displayed namelist to include new entry
+
+    def AddNamelist(self, e):
+        """add a namelist"""
+        if (not self.mainparent.file_loaded):
+            msg = "An input file must be loaded before a namelist can be added"
+            ShowMessage(msg, kind='warn')
+            return
+        self.mainparent.statusbar.SetStatusText("Adding a namelist", 0)
+
+        name = AskText("Enter name of new namelist", title="Add a Namelist")
+
+        if (name is not None):
+            self.mainparent.input_file.add_namelist(name)
+
+            # redraw stuff
+            self.mainparent.update_namelist_menu() # update available namelist menu
+            self.mainparent.statusbar.SetStatusText("Added: {}".format(name), 0)
+
+    def RemoveNamelist(self, e):
+        """remove a namelist"""
+        if (not self.mainparent.file_loaded):
+            msg = "An input file must be loaded before a namelist can be removed"
+            ShowMessage(msg, kind='warn')
+            return
+        self.mainparent.statusbar.SetStatusText("Remove a namelist", 0)
+
+        name = AskText("Enter name of namelist ro remove", title="Remove a Namelist")
+
+        if (name is not None):
+            self.mainparent.input_file.remove_namelist(name)
+
+            # redraw stuff
+            self.mainparent.update_namelist_menu() # update available namelist menu
+            self.mainparent.statusbar.SetStatusText("Removed: {}".format(name), 0)
+
+            if (self.mainparent.namelist == name):
+                self.mainparent.nmlpanel.reset(unset_namelist=True)
+
     def OnNew(self, e):
         """build an empty namelist"""
-        print("New")
+        self.mainparent.statusbar.SetStatusText("New Project", 0)
+
+        filename = "__new_project__"
+        self.mainparent.input_file = InputFile(filename, read=False)
+        self.mainparent.statusbar.SetStatusText("---New Project---", 2)
+        self.mainparent.file_loaded = True
+
+        # reset menus and such
+        self.mainparent.reset_namelist_menu()
+        self.mainparent.nmlpanel.reset(unset_namelist=True)
 
     def OnOpen(self, e):
         """open/read an existing input file"""
@@ -300,6 +370,10 @@ class ButtonPanel(wx.Panel):
 
     def OnSave(self, e):
         """save/write progress to a file"""
+        if (not self.mainparent.file_loaded):
+            msg = "An input file must be loaded/built before it can be written"
+            ShowMessage(msg, kind='warn')
+            return
         self.mainparent.statusbar.SetStatusText("Select a File ...", 0)
 
         dirname = os.getcwd()
@@ -312,13 +386,12 @@ class ButtonPanel(wx.Panel):
 
         full_path = str(dlg.GetPath()) # get selected filename and convert to standard string
 
-        if (os.path.isfile(full_path)):
-            res = AskYesNo("File already exists, do you want to overwrite it?", "File = {}".format(full_path))
-            if (not res): return
-
         # set overwrite to True since the above FileDialog already asked
         self.mainparent.input_file.write(output=full_path, indent=defaults.indent, overwrite=True)
-        self.mainparent.statusbar.SetStatusText("Written to: ".format(full_path), 0)
+        self.mainparent.statusbar.SetStatusText("Written to: {}".format(full_path), 0)
+
+        self.mainparent.input_file.filename = full_path
+        self.mainparent.statusbar.SetStatusText("File: {}".format(full_path), 2)
 
     def OnQuit(self, e):
         """exit the application"""
@@ -423,7 +496,8 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
             row += row_span # not one, to avoid overlapping entries
 
-        grid_sizer.AddGrowableCol(1,1) # make the second column "1" growable, i.e., grows as necessary
+        if (len(self.var_names) > 0):
+            grid_sizer.AddGrowableCol(1,1) # make the second column "1" growable, i.e., grows as necessary
 
         # add individual sizers to main sizer
         self.main_sizer.Add(title_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
@@ -494,16 +568,16 @@ class NamelistPanel(scrolled.ScrolledPanel):
         text_opts = wx.EXPAND|wx.ALL
 
         # output types mapped to namelist appearance
-        output_types = {"Shell Slice":"shellslice",
-                        "Shell Spectra":"shellspectra",
-                        "Point Probes":"point_probe",
-                        "Meridional Slice":"meridional",
-                        "Equatorial Slice":"equatorial",
-                        "Az Average":"azavg",
-                        "Shell Average":"shellavg",
-                        "Global Average":"globalavg",
-                        "SPH Mode":"sph_mode",
-                        "Spherical 3D":"full3d"}
+        self.output_types = {"Shell Slice":"shellslice",
+                             "Shell Spectra":"shellspectra",
+                             "Point Probes":"point_probe",
+                             "Meridional Slice":"meridional",
+                             "Equatorial Slice":"equatorial",
+                             "Az Average":"azavg",
+                             "Shell Average":"shellavg",
+                             "Global Average":"globalavg",
+                             "SPH Mode":"sph_mode",
+                             "Spherical 3D":"full3d"}
         self.output_type = None
 
         #----
@@ -541,7 +615,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
         self.diagnostic_type = wx.StaticText(self, -1, "Diagnostic Type: <select one>")
 
         # combo boxes and bind them
-        self.output_combo = wx.ComboBox(self, choices=list(output_types.keys()), style=wx.CB_DROPDOWN)
+        self.output_combo = wx.ComboBox(self, choices=list(self.output_types.keys()), style=wx.CB_DROPDOWN)
         self.output_combo.Bind(wx.EVT_COMBOBOX, self.SelectOutput)
         self.diag_type_combo = wx.ComboBox(self, choices=diagnostic_types, style=wx.CB_DROPDOWN)
         self.diag_type_combo.Bind(wx.EVT_COMBOBOX, self.SelectDiagType)
@@ -684,7 +758,19 @@ class NamelistPanel(scrolled.ScrolledPanel):
             ShowMessage(msg, kind='warn')
             return
         self.num_values = len(self.selected_values)
-        print(self.selected_values)
+
+        nml = self.mainparent.input_file.namelists[self.mainparent.namelist]
+        var_names = [v.name for v in nml.variables]
+
+        name = self.output_types[self.output_type] + "_values"
+        values = list(set(self.selected_values))
+
+        if (name in var_names): # name already in namelist, add to old values
+            ind = var_names.index(name)
+            current_values = nml.variables[ind].value
+            values = list(set(current_values + values))
+
+        nml.add_variable(name, new_values, modify=True)
 
         self.mainparent.statusbar.SetStatusText("Added {} {} quantities".format(self.num_values, self.output_type), 0)
 

@@ -82,6 +82,25 @@ class Namelist:
         self.name = name.lower()
         self.variables = []
 
+    def remove_variable(self, variable):
+        """
+        Remove variable from namelist
+
+        Args
+        ----
+        variable : Variable object or str
+            The variable to remove
+        """
+        if (isinstance(variable, Variable)):
+            name = variable.name
+        else:
+            name = variable.lower() # user sent name as a string
+        var_names = [v.name for v in self.variables]
+
+        if (name in var_names):
+            ind = var_names.index(name)
+            del self.variables[ind]
+
     def add_variable(self, variable, modify=True):
         """
         Add variables to the namelist
@@ -177,6 +196,41 @@ class InputFile:
         self.namelists = OrderedDict()
         if (read):
             self.read()
+
+    def remove_namelist(self, name):
+        """
+        Remove namelist from input file
+
+        Args
+        ----
+        name : str
+            The name of the namelist
+        """
+        name = name.lower()
+        if (name in self.namelists.keys()):
+            del self.namelists[name]
+
+    def add_namelist(self, name, variables=None):
+        """
+        Add namelist to input file if it does not already exist
+
+        Args
+        ----
+        name : str
+            The name of the namelist
+        variables : list of Variable objects, optional
+            The variables to add
+        """
+        name = name.lower()
+
+        # already exists, do nothing
+        if (name in self.namelists.keys()): return
+
+        # add new namelist and variables if they were included
+        self.namelists[name] = Namelist(name)
+
+        if (variables is not None):
+            self.namelists[name].add_variables(variables)
 
     def write(self, output=None, overwrite=False, indent="  "):
         """
