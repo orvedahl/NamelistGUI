@@ -110,7 +110,7 @@ class InputGUI(wx.Frame):
         """set the status bar"""
         self.statusbar = self.CreateStatusBar()
         self.statusbar.SetFieldsCount(3) # make 3 of them
-        self.statusbar.SetStatusWidths([-1,-2,-2]) # last one is 2x size of 1st and 2nd, all stretch as needed
+        self.statusbar.SetStatusWidths([-1,-1,-2]) # last one is 2x size of 1st and 2nd, all stretch as needed
         self.statusbar.SetStatusText("", 0)
         self.statusbar.SetStatusText("Namelist:", 1)
         self.statusbar.SetStatusText("File:", 2)
@@ -533,7 +533,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
         title_sizer = wx.BoxSizer(wx.HORIZONTAL)
         combo_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        grid_sizer = wx.GridBagSizer(0,0)
+        self.grid_sizer = wx.GridBagSizer(0,0)
 
         # setup the title
         self.num_values = 0
@@ -560,44 +560,15 @@ class NamelistPanel(scrolled.ScrolledPanel):
         button_sizer.Add(close, 0, text_opts|wx.GROW, border=_border)
         button_sizer.Add(save, 0, text_opts|wx.GROW, border=_border)
 
-        # setup the grid of possible values
-        header0 = wx.StaticText(self, -1, "Add/Remove")
-        header1 = wx.StaticText(self, -1, "Quantity Code")
-        header2 = wx.StaticText(self, -1, "Name")
-        header3 = wx.StaticText(self, -1, "LaTeX Formula")
-        grid_sizer.Add(header0, pos=(0,0), flag=static_opts, border=_border)
-        grid_sizer.Add(header1, pos=(0,1), flag=static_opts, border=_border)
-        grid_sizer.Add(header2, pos=(0,2), flag=static_opts, border=_border)
-        grid_sizer.Add(header3, pos=(0,3), flag=static_opts, border=_border)
-
-        self.selected_values = [] # keep track of selected quantities
-
-        if (self.diag_type is None):
-            row = 1
-            for qcode in quantities:
-                but = wx.ToggleButton(self, qcode, "Add") # build button and place it in second column
-                but.Bind(wx.EVT_TOGGLEBUTTON, self.OnToggle)
-                grid_sizer.Add(but, pos=(row,0), flag=static_opts, border=_border)
-
-                q_code = wx.StaticText(self, -1, str(qcode)) # build other column entries
-                q_name = wx.StaticText(self, -1, str(10*qcode)) # name
-                formula= wx.StaticText(self, -1, "Formula")
-
-                # place column entries
-                grid_sizer.Add(q_code, pos=(row,1), flag=static_opts, border=_border)
-                grid_sizer.Add(q_name, pos=(row,2), flag=static_opts, border=_border)
-                grid_sizer.Add(formula, pos=(row,3), flag=static_opts, border=_border)
-
-                row += 1
-            grid_sizer.AddGrowableCol(2,1) # make the name/formula columns "1" growable, i.e., grows as necessary
-            grid_sizer.AddGrowableCol(3,1)
+        # draw table of entries and update grid_sizer accordingly
+        self.grid_sizer = self.change_entries(self.grid_sizer, static_opts, _border)
 
         # add stuff to sizers
         self.main_sizer.Add(title_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
         self.main_sizer.Add(combo_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
         self.main_sizer.Add(button_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
         self.main_sizer.Add(wx.StaticLine(self), 0, wx.ALL|wx.EXPAND|wx.GROW, border=_border)
-        self.main_sizer.Add(grid_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
+        self.main_sizer.Add(self.grid_sizer, 0, wx.ALL|wx.EXPAND|wx.CENTER|wx.GROW, border=_border)
 
         self.SetSizer(self.main_sizer) # apply sizing/fit
         self.main_sizer.Fit(self)
@@ -607,6 +578,51 @@ class NamelistPanel(scrolled.ScrolledPanel):
         self.parent.Layout()
         self.SetAutoLayout(1) # setup scrolling, if it is needed
         self.SetupScrolling()
+
+        self.loaded = True
+
+    def change_entries(self, grid_sizer, options, border):
+        """add the table of entries to the grid sizer"""
+
+        if (self.diag_type is None): return grid_sizer # no data selected, don't change anything
+
+        # setup the grid of possible values
+        header0 = wx.StaticText(self, -1, "Add/Remove")
+        header1 = wx.StaticText(self, -1, "Quantity Code")
+        header2 = wx.StaticText(self, -1, "Name")
+        header3 = wx.StaticText(self, -1, "LaTeX Formula")
+        grid_sizer.Add(header0, pos=(0,0), flag=options, border=border)
+        grid_sizer.Add(header1, pos=(0,1), flag=options, border=border)
+        grid_sizer.Add(header2, pos=(0,2), flag=options, border=border)
+        grid_sizer.Add(header3, pos=(0,3), flag=options, border=border)
+
+        self.selected_values = [] # keep track of selected quantities
+
+        if (self.diag_type == "Velocities"):
+            Q = [1,2,3,4,5,6]
+        else:
+            Q = [10,20,30,40,50,60,70,80,90,100]
+
+        row = 1
+        for qcode in Q:
+            but = wx.ToggleButton(self, qcode, "Add") # build button and place it in second column
+            but.Bind(wx.EVT_TOGGLEBUTTON, self.OnToggle)
+            grid_sizer.Add(but, pos=(row,0), flag=options, border=border)
+
+            q_code = wx.StaticText(self, -1, str(qcode)) # build other column entries
+            q_name = wx.StaticText(self, -1, str(10*qcode)) # name
+            formula= wx.StaticText(self, -1, "Formula")
+
+            # place column entries
+            grid_sizer.Add(q_code, pos=(row,1), flag=options, border=border)
+            grid_sizer.Add(q_name, pos=(row,2), flag=options, border=border)
+            grid_sizer.Add(formula, pos=(row,3), flag=options, border=border)
+
+            row += 1
+        grid_sizer.AddGrowableCol(2,1) # make the name/formula columns "1" growable, i.e., grows as necessary
+        grid_sizer.AddGrowableCol(3,1)
+
+        return grid_sizer
 
     def OnToggle(self, e):
         """what to do when quantity code button is selected"""
@@ -629,6 +645,33 @@ class NamelistPanel(scrolled.ScrolledPanel):
         """what to do when a diagnostic type was selected"""
         self.diag_type = str(self.diag_type_combo.GetValue())
         self.diagnostic_type.SetLabel("Diagnostic Type: {}".format(self.diag_type))
+
+        border = 5
+        opts = wx.ALL|wx.ALIGN_CENTER
+
+        new_grid_sizer = wx.GridBagSizer(0,0) # build new table with updated info
+
+        # fill in the data
+        new_grid_sizer = self.change_entries(new_grid_sizer, opts, border)
+
+        # hide old sizer content
+        self.main_sizer.Hide(self.grid_sizer, recursive=True)
+
+        # replace sizers
+        self.main_sizer.Replace(self.grid_sizer, new_grid_sizer)
+
+        # store new one
+        self.grid_sizer = new_grid_sizer
+
+        self.SetSizer(self.main_sizer) # apply sizing/fit
+        self.main_sizer.Fit(self)
+
+        self.Center()
+
+        self.parent.Layout()
+        self.SetAutoLayout(1) # setup scrolling, if it is needed
+        self.SetupScrolling()
+
 
     def SelectOutput(self, e):
         """what to do when an output type was selected"""
@@ -700,25 +743,6 @@ class NewVariableDialog(wx.Dialog):
         value = str(self.value_entry.GetValue())
         return name, value
 
-class OutputEntryDisplay(scrolled.ScrolledPanel):
-    """
-    More user-friendly way to enter output values
-    """
-    def __init__(self, parent):
-
-        self.parent = parent # this should point to the NamelistPanel
-        scrolled.ScrolledPanel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
-
-class OutputEntryPanel(scrolled.ScrolledPanel):
-    """
-    The namelist panel that will appear on the left side
-    """
-    def __init__(self, parent):
-
-        self.parent = parent
-        scrolled.ScrolledPanel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
-
-        self.mainparent = self.GetParent().GetParent() # very clunky(?), but works
 def main():
     """
     Run the application
