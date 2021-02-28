@@ -672,7 +672,6 @@ class NamelistPanel(scrolled.ScrolledPanel):
         self.SetAutoLayout(1) # setup scrolling, if it is needed
         self.SetupScrolling()
 
-
     def SelectOutput(self, e):
         """what to do when an output type was selected"""
         self.output_type = str(self.output_combo.GetValue())
@@ -680,6 +679,10 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
     def SaveValues(self, e):
         """save value entries from Namelist"""
+        if (self.output_type is None):
+            msg = "The quantities are not associated with an output type. Choose one and re-save."
+            ShowMessage(msg, kind='warn')
+            return
         self.num_values = len(self.selected_values)
         print(self.selected_values)
 
