@@ -477,6 +477,16 @@ class NamelistPanel(scrolled.ScrolledPanel):
                 else:
                     growable = False
                     style = 0
+
+                # sort the values before displaying them, but ignore stuff with negative numbers
+                if ("-" not in val):
+                    if ("." in val): # val has been "comma-combined", so leverage this fact
+                        val = [float(v) for v in val.split(",")]
+                    else:
+                        val = [int(v) for v in val.split(",")]
+                    val.sort()
+                    val = [str(v) for v in val]
+                    val = ",".join(val)
             else:
                 style = 0
                 growable = False
@@ -583,8 +593,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
         #----
         # parse source tree to get valid quantity codes, latex definitions, and diagnostic types
         #----
-        diagnostic_types = ["Velocities", "Magnetic Fields"]
-        quantities = [1,2,3,4,5,6]
+        self.output_quantities = OutputQuantities(defaults.rayleigh_dir)
         self.diag_type = None
 
         #----
@@ -617,7 +626,8 @@ class NamelistPanel(scrolled.ScrolledPanel):
         # combo boxes and bind them
         self.output_combo = wx.ComboBox(self, choices=list(self.output_types.keys()), style=wx.CB_DROPDOWN)
         self.output_combo.Bind(wx.EVT_COMBOBOX, self.SelectOutput)
-        self.diag_type_combo = wx.ComboBox(self, choices=diagnostic_types, style=wx.CB_DROPDOWN)
+        self.diag_type_combo = wx.ComboBox(self, choices=list(self.output_quantities.diagnostic_types.keys()),
+                                           style=wx.CB_DROPDOWN)
         self.diag_type_combo.Bind(wx.EVT_COMBOBOX, self.SelectDiagType)
 
         # buttons
@@ -625,6 +635,8 @@ class NamelistPanel(scrolled.ScrolledPanel):
         save.Bind(wx.EVT_BUTTON, self.SaveValues)
         close = wx.Button(self, -1, 'Close Namelist')
         close.Bind(wx.EVT_BUTTON, self.Remove)
+        back = wx.Button(self, -1, 'Return to Output_Namelist')
+        back.Bind(wx.EVT_BUTTON, self.ReturnToOutput)
 
         # add title/combo/buttons to sizers
         title_sizer.Add(self.output, 1, text_opts|wx.GROW, border=_border)
@@ -632,6 +644,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
         combo_sizer.Add(self.output_combo, 1, text_opts|wx.GROW, border=_border)
         combo_sizer.Add(self.diag_type_combo, 1, text_opts|wx.GROW, border=_border)
         button_sizer.Add(close, 0, text_opts|wx.GROW, border=_border)
+        button_sizer.Add(back, 0, text_opts|wx.GROW, border=_border)
         button_sizer.Add(save, 0, text_opts|wx.GROW, border=_border)
 
         # draw table of entries and update grid_sizer accordingly
@@ -672,20 +685,17 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
         self.selected_values = [] # keep track of selected quantities
 
-        if (self.diag_type == "Velocities"):
-            Q = [1,2,3,4,5,6]
-        else:
-            Q = [10,20,30,40,50,60,70,80,90,100]
+        quantities = self.output_quantities.diagnostic_types[self.diag_type]
 
         row = 1
-        for qcode in Q:
-            but = wx.ToggleButton(self, qcode, "Add") # build button and place it in second column
+        for Q in quantities:
+            but = wx.ToggleButton(self, Q.code, "Add") # build button and place it in second column
             but.Bind(wx.EVT_TOGGLEBUTTON, self.OnToggle)
             grid_sizer.Add(but, pos=(row,0), flag=options, border=border)
 
-            q_code = wx.StaticText(self, -1, str(qcode)) # build other column entries
-            q_name = wx.StaticText(self, -1, str(10*qcode)) # name
-            formula= wx.StaticText(self, -1, "Formula")
+            q_code = wx.StaticText(self, -1, str(Q.code)) # build other column entries
+            q_name = wx.StaticText(self, -1, Q.name) # name
+            formula= wx.StaticText(self, -1, Q.tex)
 
             # place column entries
             grid_sizer.Add(q_code, pos=(row,1), flag=options, border=border)
@@ -707,13 +717,13 @@ class NamelistPanel(scrolled.ScrolledPanel):
             e.GetEventObject().SetLabel("Remove") # change button text
 
             if (_id not in self.selected_values): # add quantity
-                self.selected_values.append(_id)
+                self.selected_values.append(str(_id))
 
         else:
             e.GetEventObject().SetLabel("Add") # change button text
 
             if (_id in self.selected_values): # remove quantity
-                self.selected_values.remove(_id)
+                self.selected_values.remove(str(_id))
 
     def SelectDiagType(self, e):
         """what to do when a diagnostic type was selected"""
@@ -770,9 +780,26 @@ class NamelistPanel(scrolled.ScrolledPanel):
             current_values = nml.variables[ind].value
             values = list(set(current_values + values))
 
-        nml.add_variable(name, new_values, modify=True)
+        new_variable = Variable(name, values)
+        nml.add_variable(new_variable, modify=True)
 
         self.mainparent.statusbar.SetStatusText("Added {} {} quantities".format(self.num_values, self.output_type), 0)
+
+    def ReturnToOutput(self, e):
+        """go back to the output namelist"""
+        names = list(self.mainparent.input_file.namelists.keys()) # all namelist names in the input file
+        if ("output_namelist" not in names):
+            msg = "The Output_Namelist no longer exists, must be manually added."
+            ShowMessage(msg, kind='warn')
+            return
+
+        ind = names.index("output_namelist")
+        self.mainparent.namelist = names[ind]
+
+        self.mainparent.nmlpanel.update(unset_namelist=False) # display the namelist values
+
+        self.mainparent.reset_statusbar()
+        self.mainparent.statusbar.SetStatusText("Namelist: {}".format(self.mainparent.namelist), 1)
 
 class NewVariableDialog(wx.Dialog):
     """
