@@ -2,12 +2,7 @@
 Classes to read/write/modify Rayleigh output quantities
 """
 from __future__ import print_function
-import matplotlib
-matplotlib.use('WXAgg')
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-from matplotlib.figure import Figure
 import os
-from collections import OrderedDict
 
 def substring_indices(line, substr):
     """
@@ -198,12 +193,13 @@ class OutputQuantities:
 
         result = None
 
-        # ignrore empty lines and comments
+        # ignore empty lines and comments
         if (line.lstrip().startswith("!") or (line.strip() == "")): return result
 
         # vlaid lines include all three
         if (("integer" in line) and ("parameter" in line) and ("=" in line)):
             line = line.strip()
+            Line = Line.strip() # to maintain case sensitivity of comments
 
             quant = line.split("::")[1] # everything to right of "::"
             inds = quant.split("!")     # split trailing comments, if any
@@ -211,7 +207,8 @@ class OutputQuantities:
             if (len(inds) == 1):
                 comment = ''
             else:
-                comment = inds[1].strip()
+                _q = Line.split("::")[1] # maintain case sensitivity
+                comment = (_q.split("!")[1]).strip()
 
             q = quantity.split("=") # parse out the name and index/code
             name = q[0].strip()

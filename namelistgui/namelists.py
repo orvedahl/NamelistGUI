@@ -258,16 +258,26 @@ class InputFile:
                 self.namelists[nml].write(mf, indent=indent, verbose=False)
                 mf.write("\n")
 
-    def read(self):
+    def read(self, filename=None):
         """
         Read the input file and parse the namelist information
+
+        Args
+        ----
+        filename : str
+            Read from this file instead of the default self.filename
         """
         store_entry = False
         name = None
 
+        if (filename is None):
+            fname = self.filename
+        else:
+            fname = filename
+
         if (self.verbose):
-            print("Reading input file from: {}".format(self.filename))
-        with open(self.filename, "r") as mf:
+            print("Reading input file from: {}".format(fname))
+        with open(fname, "r") as mf:
             for Line in mf:
                 if (Line.strip() == ""): continue # skip empty lines and comments
                 if (Line.lstrip().startswith("!")): continue

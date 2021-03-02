@@ -8,6 +8,15 @@ import wx.lib.scrolledpanel as scrolled
 from namelists import InputFile, Variable
 from diagnostic_outputs import OutputQuantities
 import defaults
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.use('WXAgg')
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from matplotlib.figure import Figure
+
+if (defaults.use_tex):
+    plt.rc('text', usetex=True)
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath')
 
 def AskYesNo(question, title=''):
     """ask user a yes/no question and return a boolean"""
@@ -624,10 +633,12 @@ class NamelistPanel(scrolled.ScrolledPanel):
         self.diagnostic_type = wx.StaticText(self, -1, "Diagnostic Type: <select one>")
 
         # combo boxes and bind them
-        self.output_combo = wx.ComboBox(self, choices=list(self.output_types.keys()), style=wx.CB_DROPDOWN)
+        keys = list(self.output_types.keys()); keys.sort()
+        self.output_combo = wx.ComboBox(self, choices=keys, style=wx.CB_DROPDOWN)
         self.output_combo.Bind(wx.EVT_COMBOBOX, self.SelectOutput)
-        self.diag_type_combo = wx.ComboBox(self, choices=list(self.output_quantities.diagnostic_types.keys()),
-                                           style=wx.CB_DROPDOWN)
+
+        keys = list(self.output_quantities.diagnostic_types.keys()); keys.sort()
+        self.diag_type_combo = wx.ComboBox(self, choices=keys, style=wx.CB_DROPDOWN)
         self.diag_type_combo.Bind(wx.EVT_COMBOBOX, self.SelectDiagType)
 
         # buttons
@@ -682,12 +693,15 @@ class NamelistPanel(scrolled.ScrolledPanel):
         grid_sizer.Add(header1, pos=(0,1), flag=options, border=border)
         grid_sizer.Add(header2, pos=(0,2), flag=options, border=border)
         grid_sizer.Add(header3, pos=(0,3), flag=options, border=border)
+        grid_sizer.Add(wx.StaticLine(self), pos=(1,0), span=(1,4),
+                               flag=wx.ALL|wx.EXPAND|wx.GROW, border=border)
 
         self.selected_values = [] # keep track of selected quantities
 
         quantities = self.output_quantities.diagnostic_types[self.diag_type]
 
-        row = 1
+        row = 2
+        iquant = 0
         for Q in quantities:
             but = wx.ToggleButton(self, Q.code, "Add") # build button and place it in second column
             but.Bind(wx.EVT_TOGGLEBUTTON, self.OnToggle)
@@ -695,18 +709,50 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
             q_code = wx.StaticText(self, -1, str(Q.code)) # build other column entries
             q_name = wx.StaticText(self, -1, Q.name) # name
-            formula= wx.StaticText(self, -1, Q.tex)
+
+            formula = self.RenderTeX(Q.name, Q.tex)
 
             # place column entries
             grid_sizer.Add(q_code, pos=(row,1), flag=options, border=border)
             grid_sizer.Add(q_name, pos=(row,2), flag=options, border=border)
             grid_sizer.Add(formula, pos=(row,3), flag=options, border=border)
 
-            row += 1
+            iquant += 1
+
+            # add horizontal line every 5 quantities
+            if (iquant % 5 == 0):
+                grid_sizer.Add(wx.StaticLine(self), pos=(row+1,0), span=(1,4),
+                               flag=wx.ALL|wx.EXPAND|wx.GROW, border=border)
+                row_inc = 2
+            else:
+                row_inc = 1
+
+            row += row_inc
+
         grid_sizer.AddGrowableCol(2,1) # make the name/formula columns "1" growable, i.e., grows as necessary
         grid_sizer.AddGrowableCol(3,1)
 
         return grid_sizer
+
+    def RenderTeX(self, name, tex_string, dpi=50):
+        """render the string using LaTeX"""
+        if (defaults.use_tex):
+            try:
+                # convert width/height in pixels to inches and add some padding
+                w = defaults.tex_width*defaults.tex_padding/dpi
+                h = defaults.tex_height*defaults.tex_padding/dpi
+                fig = Figure(figsize=(w,h))
+                formula = FigureCanvas(self, -1, fig)
+
+                fig.clear()
+                fig.text(0.05, 0.25, tex_string, fontsize=defaults.tex_fontsize) # draw the LaTeX formula onto canvas
+                formula.draw()
+            except:
+                formula = wx.StaticText(self, -1, "Error Rendering LaTeX")
+        else:
+            formula = wx.StaticText(self, -1, "LaTeX was disabled")
+
+        return formula
 
     def OnToggle(self, e):
         """what to do when quantity code button is selected"""

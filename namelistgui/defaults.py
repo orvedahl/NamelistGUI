@@ -17,6 +17,12 @@ rayleigh_dir = os.path.join(HOME, "Programs", "Rayleigh-Fork")
 # include support for LaTeX
 #-------
 use_tex = True
+tex_height = 20   # height of the LaTeX formula window in pixels
+tex_width = 50    # width
+tex_padding = 1.5 # add extra space to formula window, 1.0=no change
+
+#fontsize to use: xx-small, x-small, small, medium, large, x-large, xx-large, larger
+tex_fontsize = 'xx-large'
 
 #-------
 # set default application size
