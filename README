@@ -1,6 +1,8 @@
 
 A GUI built using wxPython that reads/modifies/writes Rayleigh namelist files.
 
+---very much a work in progress---
+
 If the top directory of the NamelistGUI project is named NAMELIST_GUI, then the
 easiest way to run the GUI is from the command line:
 
