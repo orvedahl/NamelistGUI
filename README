@@ -1,3 +1,64 @@
 
-Build a GUI using wxPython that reads/modifies/writes Rayleigh namelists
+A GUI built using wxPython that reads/modifies/writes Rayleigh namelist files.
+
+If the top directory of the NamelistGUI project is named NAMELIST_GUI, then the
+easiest way to run the GUI is from the command line:
+
+    python NAMELIST_GUI/namelistgui/input_gui.py
+
+There are two menus:
+    File
+        New:
+            Start an empty namelist project.
+        Open
+            Open an existing main_input file
+        Save
+            Save the modifications to a file, formatted as a standard Fortran namelist
+        Quit
+            Exit without saving.
+
+    Namelists
+        Once an input file is loaded or a namelist is added to an empty project, this menu
+        will be populated with the available names of the individual namelists. When one
+        is selected, its contents will be displayed in the main panel on the left. To modify
+        an entry, select it and change the value accordingly. Character variables should include
+        quotes and array entries should be separated by commas. The Save button in the namelist
+        panel will save all changes to the currently selected namelist.
+
+There are three shortcuts in the toolbar, represented by three picture icons. These shortcuts
+include New, Open, and Save. They are aliases to the corresponding File menu options.
+
+The buttons on the right hand side include:
+
+    Open
+        Open an existing main_input file
+    Write
+        Save the modifications to a file, formatted as a standard Fortran namelist
+    New/Remove Variable
+        Once an input file has been loaded (or a new project started) and a particular namelist has
+        been chosen, a new variable can be added and a variable can be removed at the push of the
+        appropriate button.
+    New/Remove Namelist
+        Once an input file has been loaded, an entire namelist can be added and/or removed with
+        the appropriate button.
+
+Special considerations for the Output_Namelist:
+
+    When the output_namelist is selected, an additional button appears at the top named
+    Choose "<output>_values". This button provides an alternate way to enter the
+    quantity codes into the *_values variables.
+
+    First select the desired output variable type, such as Shell_Avgs, AZ_Avgs, G_Avgs, etc.
+    Next, select a diagnostic group type. Once a diagnostic group has been selected, all
+    quantities associated with that group will be displayed in a table format below.
+    Each row represents a specific quantity code, whose LaTeX representation is shown on
+    the right (assuming use_tex=True in the defaults). Select the desired variables and
+    then click the Save/Update button to save those values to the appropriate <output>_values
+    variable. To add other output types, select a new output type from the drop-down selection
+    and add the variables as before. Variables are only included if you hit the Save/Update
+    button, simply selecting the Add button will not do anything by itself.
+
+    The "Return" button will take you back to the standard namelist entry format for the
+    Output_Namelist. If new variables were added, they should now appear in the appropriate
+    <output_type>_values variable.
 
