@@ -532,6 +532,12 @@ class NamelistPanel(scrolled.ScrolledPanel):
             # make certain text-entry boxes more accepting of long entries
             if ("_values" in variable_name or "_levels" in variable_name or \
                 "_indices" in variable_name or "_mode_ell" in variable_name):
+
+                if ("" in self.var_values[i]): # this value contains empty values, remove those
+                    ind = self.var_values[i].index("")
+                    del self.var_values[i][ind]
+                    val = ",".join(self.var_values[i])
+
                 length = len(val)
                 row_span = max(length // 50, 1) # arbitrarily choose 50 characters
                 if (row_span > 1):
@@ -542,7 +548,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
                     style = 0
 
                 # sort the values before displaying them, but ignore stuff with negative numbers
-                if ("-" not in val):
+                if (("-" not in val) and (len(val) > 0)):
                     if ("." in val): # val has been "comma-combined", so leverage this fact
                         val = [float(v) for v in val.split(",")]
                     else:
