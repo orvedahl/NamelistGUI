@@ -6,7 +6,11 @@ easiest way to run the GUI is from the command line:
 
     python NAMELIST_GUI/namelistgui/input_gui.py
 
-There are two menus:
+Default options that may be user/machine dependent are stored and described in the file
+
+    NAMELIST_GUI/namelistgui/defaults.py
+
+When the GUI is started, there are two menus:
     File
         New:
             Start an empty namelist project.
