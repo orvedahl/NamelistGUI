@@ -1,8 +1,99 @@
 """
-Classes to read/write/modify Rayleigh output quantities
+Class to read/write/modify Rayleigh output quantities.
+
+If run directly, this module will parse the Diagnostics_Base.F90 file for all available
+quantity codes and then render each LaTeX formula as a separate PNG image. The default
+location to search for the Diagnostics_Base.F90 is
+
+    <rayleigh_dir>/src/Diagnostics
+
+where <rayleigh_dir> is specified in the defaults.py file. To directly specify the path
+with no appended entries, specify the "diagnostics_dir" entry in defaults.py.
+
+Usage:
+    diagnostic_outputs.py [options]
+
+Options:
+    --overwrite  Overwrite existing files
 """
 from __future__ import print_function
+import matplotlib
+import matplotlib.pyplot as plt
+import defaults
 import os
+
+plt.rc('text', usetex=True)
+plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
+
+class ProgressBar():
+    """
+    Print a progress bar to the terminal
+
+    Attributes
+    ----------
+    total : int
+        The total number of iterations to be included
+    prefix : str
+        What text appears before progress bar
+    suffix : str
+        What text appears after progress bar
+    decimals : int
+        How many decimals to display in the percent complete
+    length : int
+        How many characters are in the progress bar
+    fill : str
+        What character to fill the bar
+
+    Example:
+        P = ProgressBar(256, prefix="Progress:", suffix="Complete", length=50)
+        P(0)
+        for i in range(256):
+            ....
+            P(i+1)
+
+    Produces Output:
+        Progress: |######################################------| 90.0% Complete
+    """
+    def __init__(self, total, prefix='\tProgress:', suffix='Complete',
+                 decimals=1, length=50, fill='#'):
+        """
+        Args
+        ----
+        total : int
+            The total number of iterations to be included
+        prefix : str, optional
+            What text appears before progress bar
+        suffix : str, optional
+            What text appears after progress bar
+        decimals : int, optional
+            How many decimals to display in the percent complete
+        length : int, optional
+            How many characters are in the progress bar
+        fill : str, optional
+            What character to fill the bar
+        """
+        self.total = total
+        self.prefix = prefix
+        self.suffix = suffix
+        self.decimals = decimals
+        self.length = length
+        self.fill = fill
+
+        if (total <= 0):
+            e = "\nERROR: length of progress bar must be positive, length = {}".format(total)
+            raise ValueError(e)
+
+    def __call__(self, itr):
+        percent = ("{0:." + str(self.decimals) + "f}").format(100 * (itr / float(self.total)))
+        filledLength = int(self.length * itr // self.total)
+        bar = self.fill * filledLength + '-' * (self.length - filledLength)
+
+        # print the progress bar
+        print('\r{} |{}| {}% {}'.format(self.prefix, bar, percent, self.suffix), end='')
+
+        # print new line on completion
+        if (itr == self.total):
+            print()
 
 def substring_indices(line, substr):
     """
@@ -72,7 +163,7 @@ def _ensure_texable(line, sep=":tex:", verbose=True):
     repaired : str
         The repaired line
     """
-    entry = line.split(sep)[1]
+    entry = line.split(sep)[1].strip()
 
     if (entry.count("$") % 2 == 1):
         entry = entry + "$"
@@ -101,11 +192,11 @@ class Quantity:
         The quantity code
     name : str
         The variable name
-    filename : str
-        The filename that calculates this quantity
+    tex : str
+        The LaTeX formula, including "$" symbols
     """
 
-    def __init__(self, code, name, filename=None, tex=None):
+    def __init__(self, code, name, tex=None):
         """
         Args
         ----
@@ -113,35 +204,42 @@ class Quantity:
             The quantity code
         name : str
             The variable name
-        filename : str, optional
-            The filename that calculates this quantity
         tex : str, optional
             The LaTeX formula, including "$" symbols
         """
         self.code = code
         self.name = name.lower()
-        self.filename = filename
         self.tex = tex
 
 class OutputQuantities:
     """
-    A collection of Rayleigh output quantities
+    A collection of Rayleigh output quantities found by parsing Diagnostic_Base.F90
 
     Attributes
     ----------
-    codes : list of int
-        The available quantity codes
+    quantities : list of Quantity objects
+        The available quantities
+    diagnostic_types : dict
+        The available quantities sorted by diagnostic type. The keys are the available
+        diagnostic types, e.g., "Velocity_Field", "Energies", etc. The value is a list of
+        Quantity objects associated with this type.
     """
 
-    def __init__(self, rayleigh_dir):
+    def __init__(self, rayleigh_dir, default_location=True):
         """
         Args
         ----
         rayleigh_dir : str
             Path to the top of the Rayleigh source tree
+        default_location : bool, optional
+            If True, the search location will be rayleigh_dir/src/Diagnostics/. If False,
+            the search location is just rayleigh_dir/
         """
         self.rayleigh_dir = os.path.abspath(rayleigh_dir)
-        self.diag_dir = os.path.join(self.rayleigh_dir, "src", "Diagnostics")
+        if (default_location):
+            self.diag_dir = os.path.join(self.rayleigh_dir, "src", "Diagnostics")
+        else:
+            self.diag_dir = self.rayleigh_dir
         self.diag_base = os.path.join(self.diag_dir, "Diagnostics_Base.F90")
 
         # main storage structure
@@ -237,7 +335,7 @@ class OutputQuantities:
 
             if (line.lstrip().startswith("include")): # parse the included file
                 if ("'" in line):
-                    inc_file = Line.split("'")[1] # extract the include filename
+                    inc_file = Line.split("'")[1] # extract the included filename
                 elif ('"' in line):
                     inc_file = Line.split('"')[1]
 
@@ -293,25 +391,24 @@ class OutputQuantities:
             # ensure unique entries
             diag_quants = list(set(diag_quants))
 
-            # get diagnostic type based on filename, strip of ".F90"
+            # get diagnostic type based on filename, strip off ".F90": /path/Diagnostics_<type>.F90
             diag_type = (os.path.basename(f).split("_", 1)[1])[:-4]
 
             # allocate space
             if (diag_type not in self.diagnostic_types.keys()):
                 self.diagnostic_types[diag_type] = []
 
-            # get names associated with this diagnostic type
+            # get names already associated with this diagnostic type
             qnames = [x.name for x in self.diagnostic_types[diag_type]]
 
-            # store data in main data structure
-            for q in diag_quants:
+            for q in diag_quants: # loop over found quantities
                 if (q not in quantity_names):
                     #print("ERROR: could not map variable name = {}".format(q))
                     continue
 
                 if (q in qnames): continue # already added
 
-                ind = quantity_names.index(q)
+                ind = quantity_names.index(q) # store quantity
                 Q = self.quantities[ind]
                 self.diagnostic_types[diag_type].append(Q)
 
@@ -344,4 +441,63 @@ class OutputQuantities:
             quants.append(var_name)
 
         return list(set(quants))
+
+def render_tex(qcode, formula, image_path, overwrite=False):
+    """write quantity formulas to PNG images"""
+
+    fname = os.path.join(image_path, "{}.png".format(qcode)) # build filename and check existence
+    if (os.path.isfile(fname) and (not overwrite)):
+        print("Skip LaTeX Render: file exists and overwrite=False, file = {}".format(fname))
+        return
+
+    if (not os.path.exists(image_path)): # make path if it doesn't exist
+        os.mkdir(image_path)
+
+    # get figure parameters
+    dpi = 100
+    w = defaults.tex_width*defaults.tex_padding/dpi
+    h = defaults.tex_height*defaults.tex_padding/dpi
+
+    # build figure object
+    fig = plt.figure(figsize=(w,h), clear=True, dpi=dpi)
+
+    # draw the text
+    fig.text(0.05, 0.25, formula, fontsize=defaults.tex_fontsize)
+
+    # save the image
+    plt.savefig(fname) #, bbox_inches='tight')
+
+    # close figure and free it from memory
+    plt.close()
+
+if __name__ == "__main__":
+    from docopt import docopt
+    args = docopt(__doc__)
+
+    overwrite = args['--overwrite']
+    if (overwrite is None):
+        overwrite = defaults.tex_overwrite
+
+    if (defaults.diagnostics_dir is None):
+        search_path = defaults.rayleigh_dir
+        default_loc = True
+    else:
+        search_path = defaults.diagnostics_dir
+        default_loc = False
+
+    image_path = defaults.quantity_code_image_path
+
+    outputQ = OutputQuantities(search_path, default_location=default_loc)
+    offsets = list(outputQ.offsets.keys())
+
+    P = ProgressBar(len(outputQ.quantities))
+
+    print("\nBuilding quantity code images ...")
+    P(0)
+    for i,Q in enumerate(outputQ.quantities):
+        if (Q.name in offsets): continue
+        render_tex(Q.code, Q.tex, image_path, overwrite=overwrite)
+        P(i+1)
+
+    print("\nSaved images to: {}\n".format(image_path))
 

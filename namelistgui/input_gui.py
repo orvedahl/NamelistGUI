@@ -6,17 +6,17 @@ import os
 import wx
 import wx.lib.scrolledpanel as scrolled
 from namelists import InputFile, Variable
-from diagnostic_outputs import OutputQuantities
+from diagnostic_outputs import OutputQuantities, render_tex, ProgressBar
 import defaults
 import matplotlib
-import matplotlib.pyplot as plt
 matplotlib.use('WXAgg')
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 
 if (defaults.use_tex):
     plt.rc('text', usetex=True)
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath')
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath}')
 
 def AskYesNo(question, title=''):
     """ask user a yes/no question and return a boolean"""
@@ -140,6 +140,9 @@ class InputGUI(wx.Frame):
         saveItem = fileMenu.Append(wx.ID_SAVE, '&Save', 'Write Project')
         quitItem = fileMenu.Append(wx.ID_EXIT, '&Quit', 'Quit')
 
+        #toolMenu = wx.Menu() # initialize another menu and add stuff to it
+        #pngItem  = toolMenu.Append(wx.ID_ANY, '&Build LaTeX Formulas', 'LaTeX Formulas')
+
         nmlMenu = wx.Menu() # initialize another menu
 
         # puposefully do *not* bind this with anything just yet
@@ -147,7 +150,10 @@ class InputGUI(wx.Frame):
 
         # add the menu(s) to the menu bar
         self.menubar.Append(fileMenu, '&File')
+        #self.menubar.Append(toolMenu, '&Tools')
         self.menubar.Append(nmlMenu, '&Namelists')
+
+        self.nml_menu_index = 1 # index into menubar that returns the Namelist menu
 
         # finalize/build the menubar
         self.SetMenuBar(self.menubar)
@@ -157,6 +163,8 @@ class InputGUI(wx.Frame):
         self.Bind(wx.EVT_MENU, self.buttons.OnOpen, openItem)
         self.Bind(wx.EVT_MENU, self.buttons.OnSave, saveItem)
         self.Bind(wx.EVT_MENU, self.buttons.OnQuit, quitItem)
+
+        #self.Bind(wx.EVT_MENU, self.buttons.OnBuildPNGs, pngItem)
 
         #---TOOLBAR
         toolbar = self.CreateToolBar() # build a toolbar
@@ -184,7 +192,7 @@ class InputGUI(wx.Frame):
         nmlItem = new_nml.Append(wx.ID_ANY, '--No File Loaded--', '--No File Loaded--')
 
         # replace the second menu, index=1
-        self.menubar.Replace(1, new_nml, '&Namelists')
+        self.menubar.Replace(self.nml_menu_index, new_nml, '&Namelists')
 
         self.namelist = None # there is no longer a current namelist
         self.statusbar.SetStatusText("Namelist: --No File Loaded--", 1)
@@ -199,7 +207,7 @@ class InputGUI(wx.Frame):
             self.Bind(wx.EVT_MENU, self.SelectNamelist, item, id=i)
 
         # replace old menu in the 1st position with updated one (0-based indexing)
-        self.menubar.Replace(1, new_nml, '&Namelists')
+        self.menubar.Replace(self.nml_menu_index, new_nml, '&Namelists')
 
         # reset the namelist entries that are displayed
         self.nmlpanel.reset(unset_namelist=True) # ensure no namelist is currently selected
@@ -341,6 +349,40 @@ class ButtonPanel(wx.Panel):
             if (self.mainparent.namelist == name):
                 self.mainparent.nmlpanel.reset(unset_namelist=True)
 
+    def OnBuildPNGs(self, e):
+        """generate the LaTeX formula images"""
+        if (not defaults.use_tex):
+            msg = "LaTeX is disabled in the defaults.py file. To use this functionality, change the"
+            msg += " use_tex option to True and restart the GUI."
+            ShowMessage(msg, kind='warn')
+            return
+        question = "Quantity code formulas are displayed using PNG images, which need to be generated."
+        question += "\n\n\nImages should only be generated if they do not already exist or"
+        question += " the quantity codes have changed, e.g., more custom outputs have been added."
+        question += "\n\n\nThis can take ~60 sec, do you want to proceed?"
+        proceed = AskYesNo(question, title='Generate LaTeX Formula Images?')
+        if (not proceed): return
+
+        question = "Choose a path where the images will be saved. The default value from defaults.py is shown."
+        path = AskText(question, default=defaults.quantity_code_image_path, title="Where to store images?")
+        if (path is None): return
+        defaults.quantity_code_image_path = path # user overrode this quantity, remember for later
+
+        question = "If image files already exist, do you want to overwrite them?"
+        overwrite = AskYesNo(question, title='Overwrite Existing Files?')
+
+        # call render routine and display a progress bar
+        Nq = len(self.mainparent.nmlpanel.output_quantities.quantities)
+        offsets = list(self.mainparent.nmlpanel.output_quantities.offsets.keys())
+
+        P = ProgressBar(Nq)
+        P(0)
+        for i,Q in enumerate(self.mainparent.nmlpanel.output_quantities.quantities):
+            if (Q.name in offsets): continue
+            render_tex(Q.code, Q.tex, defaults.quantity_code_image_path, overwrite=overwrite)
+
+            P(i+1) # update progress bar
+
     def OnNew(self, e):
         """build an empty namelist"""
         self.mainparent.statusbar.SetStatusText("New Project", 0)
@@ -419,6 +461,18 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
         self.main_sizer = None # will become a space manager in the vertical
         self.loaded = False
+
+        #----
+        # parse source tree to get valid quantity codes, latex definitions, and diagnostic types
+        #----
+        if (defaults.diagnostics_dir is None):
+            search_path = defaults.rayleigh_dir
+            default_loc = True
+        else:
+            search_path = defaults.diagnostis_dir
+            default_loc = False
+        self.output_quantities = OutputQuantities(search_path, default_location=default_loc)
+        self.diag_type = None
 
         # draw/display the selected namelist
         if (self.mainparent.file_loaded and (self.mainparent.namelist is not None)):
@@ -600,12 +654,6 @@ class NamelistPanel(scrolled.ScrolledPanel):
         self.output_type = None
 
         #----
-        # parse source tree to get valid quantity codes, latex definitions, and diagnostic types
-        #----
-        self.output_quantities = OutputQuantities(defaults.rayleigh_dir)
-        self.diag_type = None
-
-        #----
         # build contents, will share much of the update() method content, but with important differences
         #
         #     output type: <output>    diagnostic type: <diagnostics>
@@ -700,6 +748,17 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
         quantities = self.output_quantities.diagnostic_types[self.diag_type]
 
+        # choose a good height/width for formulas
+        if (self.diag_type in ["Linear_Forces", "Angular_Momentum", "Energy_Flux",
+                               "Induction", "Inertial_Forces", "Lorentz_Forces",
+                               "Poynting_Flux", "TurbKE_Budget"]):
+            width = 100
+        elif (self.diag_type == "Thermal_Equation"):
+            width = 150
+        else:
+            width = 30
+        height = 20
+
         row = 2
         iquant = 0
         for Q in quantities:
@@ -710,7 +769,7 @@ class NamelistPanel(scrolled.ScrolledPanel):
             q_code = wx.StaticText(self, -1, str(Q.code)) # build other column entries
             q_name = wx.StaticText(self, -1, Q.name) # name
 
-            formula = self.RenderTeX(Q.name, Q.tex)
+            formula = self.RenderTeX(Q, size=(width,height))
 
             # place column entries
             grid_sizer.Add(q_code, pos=(row,1), flag=options, border=border)
@@ -734,21 +793,35 @@ class NamelistPanel(scrolled.ScrolledPanel):
 
         return grid_sizer
 
-    def RenderTeX(self, name, tex_string, dpi=50):
-        """render the string using LaTeX"""
+    def RenderTeX(self, Q, size=None, dpi=50):
+        """render the string using LaTeX, size=tuple containing (width,height) in pixels"""
+        code = Q.code
+        name = Q.name
+        tex  = Q.tex
         if (defaults.use_tex):
-            try:
+            #try:
+            if (1):
                 # convert width/height in pixels to inches and add some padding
-                w = defaults.tex_width*defaults.tex_padding/dpi
-                h = defaults.tex_height*defaults.tex_padding/dpi
+                if (size is None):
+                    w = defaults.tex_width
+                    h = defaults.tex_height
+                else:
+                    w,h = size
+                w *= defaults.tex_padding/dpi
+                h *= defaults.tex_padding/dpi
                 fig = Figure(figsize=(w,h))
                 formula = FigureCanvas(self, -1, fig)
 
                 fig.clear()
-                fig.text(0.05, 0.25, tex_string, fontsize=defaults.tex_fontsize) # draw the LaTeX formula onto canvas
+                fig.text(0.05, 0.25, tex, fontsize=defaults.tex_fontsize) # draw the LaTeX formula onto canvas
                 formula.draw()
-            except:
-                formula = wx.StaticText(self, -1, "Error Rendering LaTeX")
+            #try:
+            #    filename = os.path.join(defaults.quantity_code_image_path, "{}.png".format(code))
+            #    png_image = wx.Image(filename, wx.BITMATP_TYPE_ANY).ConvertToBitmap()
+            #    formula = wx.StaticBitmap(self, -1, png_image) #, pos=position, size=size)
+            else:
+            #except:
+                formula = wx.StaticText(self, -1, "Error Importing Formula Image")
         else:
             formula = wx.StaticText(self, -1, "LaTeX was disabled")
 
@@ -904,6 +977,50 @@ class NewVariableDialog(wx.Dialog):
         name = str(self.name_entry.GetValue())   # convert user entries into useful strings
         value = str(self.value_entry.GetValue())
         return name, value
+
+class MyProgressBar(wx.Dialog):
+    """
+    Popup window showing a progress bar
+    """
+    def __init__(self, parent, title, start=0, stop=100):
+
+        self.parent = parent
+
+        wx.Dialog.__init__(self, parent, -1, title)
+
+        self.stop = stop
+
+        # initialize the Gauge
+        self.gauge = wx.Gauge(self, -1, range=self.stop, style=wx.GA_HORIZONTAL, name="Progress")
+        self.gauge.SetValue(start)
+
+        # add some text to left of gauge
+        txt = wx.StaticText(self, -1, "Progress:")
+
+        # add button below
+        close = wx.Button(self, wx.ID_CLOSE, 'Add')
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        Hsizer = wx.BoxSizer(wx.HORIZONTAL) # main sizer
+        Hsizer.Add(txt, 0, wx.CENTER)
+        Hsizer.Add(self.gauge, 1, wx.GROW|wx.EXPAND|wx.ALL, border=5)
+
+        sizer.Add(Hsizer, 1, wx.GROW|wx.EXPAND|wx.ALL, border=5)
+        sizer.Add(close, 0, wx.GROW|wx.EXPAND|wx.ALL, border=5)
+
+        self.SetSizer(sizer)
+        sizer.Fit(self)
+
+        self.Center()
+
+    def Update(self, step):
+        """update the progress bar"""
+        self.gauge.SetValue(step)
+        if (step == self.stop):
+            self.Close()
+
+    def Close(self):
+        self.Close()
 
 def main():
     """
